@@ -10,7 +10,7 @@ import {
   Input,
   Tag,
   Spin,
-  Radio,
+  DatePicker,
   Tabs,
   Select,
   Divider,
@@ -19,9 +19,7 @@ import {
 import {
   CheckCircleFilled,
   CheckCircleOutlined,
-  DownloadOutlined,
   EditOutlined,
-  EyeOutlined,
   SaveOutlined,
 } from "@ant-design/icons";
 import LoanService from "services/LoanService";
@@ -29,12 +27,8 @@ import Utils from "utils";
 import moment from "moment";
 import TextArea from "antd/es/input/TextArea";
 import PayablesService from "services/PayablesService";
-import jsPDF from 'jspdf';
-import pdfMake from 'pdfmake/build/pdfmake';
-import pdfFonts from 'pdfmake/build/vfs_fonts';
 
-pdfMake.vfs = pdfFonts.pdfMake.vfs;
-
+import dayjs from "dayjs";
 
 const { Option } = Select;
 
@@ -42,7 +36,6 @@ const { formatNumber } = Utils;
 
 const Loans = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [currentRecord, setCurrentRecord] = useState(null);
   const [form] = Form.useForm();
@@ -52,8 +45,8 @@ const Loans = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [tableVisible, setTableVisible] = useState(true);
   const [unsavedPayables, setUnsavedPayables] = useState([]);
- 
-  
+  const [isExtendModalOpen, setIsExtendModalOpen] = useState(false);
+  console.log("message",currentRecord)
   const handleSearchChange = (e) => {
     const value = e.target.value;
     setSearchTerm(value);
@@ -68,70 +61,11 @@ const Loans = () => {
       fetchLoans(); // Refetch the loans if search is cleared
     }
   };
-  
 
-  const generateReceipt = (record, totalPayable) => {
-    if (!record || record.status !== "completed") {
-        message.error("Receipt can only be generated for completed loans.");
-        return;
-    }
-
-    // Calculate total payable amount
-   
-    const docDefinition = {
-        content: [
-            { text: 'Loan Receipt', style: 'header', fontSize: 24, bold: true, margin: [0, 0, 0, 20] },
-            // Loan Details Table
-            {
-                table: {
-                    headerRows: 1,
-                    widths: ['*', 'auto'],
-                    body: [
-                        [{ text: 'Loan Details', style: 'header', colSpan: 2, bold: true }, {}],
-                        ['Name', record.name],
-                        ['Address', record.address],
-                        ['Amount', formatNumber(record.amount)], // Use formatNumber function
-                        ['Interest Rate', `${record.interest}%`],
-                        ['Months Payable', record.months_payable],
-                        ['Payment per Quincena', formatNumber(record.quincena)], // Use formatNumber function
-                        ['Total Amount Paid', formatNumber(totalPayable)], // Add total payable
-                        ['Status', record.status],
-                        ['Date Loaned', moment(record.date_loan).format("MMMM D, YYYY")],
-                        
-                    ]
-                },
-                layout: 'lightHorizontalLines' // You can adjust the layout style
-            },
-            { text: 'Payables:', style: 'subheader', margin: [0, 20, 0, 10], bold: true },
-            // Payables Table
-            {
-                table: {
-                    headerRows: 1,
-                    widths: ['*', 'auto', 'auto', 'auto'], // Adjust widths as necessary
-                    body: [
-                        [{ text: 'Description', bold: true }, { text: 'Amount', bold: true }, { text: 'Status', bold: true }, { text: 'Due Date', bold: true }],
-                        ...record.payables.map(payable => [
-                            payable.description || 'N/A',
-                            formatNumber(payable.amount), // Use formatNumber function
-                            payable.status,
-                            payable.due_date
-                        ])
-                       
-                    ]
-                },
-                layout: 'lightHorizontalLines' // You can adjust the layout style
-            }
-        ],
-        defaultStyle: {
-            font: 'Roboto', // Make sure you've embedded the Roboto font
-            fontSize: 18 // Default font size for the document
-        }
-    };
-
-    pdfMake.createPdf(docDefinition).download(`${record.name}_Loan_Receipt.pdf`);
-};
-
-
+  const showExtendModal = (record) => {
+    setCurrentRecord(record);
+    setIsExtendModalOpen(true);
+  };
 
   const handleClearSearch = () => {
     setSearchTerm("");
@@ -141,23 +75,47 @@ const Loans = () => {
   const fetchLoans = async () => {
     setLoading(true);
     try {
-        let res = await LoanService.getLoans();
-        res = res?.filter((i) => i.status !== "pending");
+      const res = await LoanService.getLoans({
+        status: "pending",
+      });
 
-        setDataSource(res);
-        if (res.length > 0) {
-            // Set currentRecord to the first loan or a specific loan based on your logic
-            setCurrentRecord(res[0]); // or setCurrentRecord(selectedLoan) if you have a selection mechanism
-        }
-        setTableVisible(true);
+      setDataSource(res);
+      setTableVisible(true); // Ensure the table is visible
     } catch (error) {
-        console.error("Failed to fetch loans", error);
-        setTableVisible(false);
+      console.error("Failed to fetch loans", error);
+      setTableVisible(false); // Hide the table in case of an error
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
-};
+  };
 
+  const handleDateChange = (id, date, dateString) => {
+    setUnsavedPayables((prev) => {
+      // Check if the item with the given id exists
+      const index = prev.findIndex((i) => i.id === id);
+
+      if (index === -1) {
+        // Item does not exist, add a new one
+        const findPayable = currentRecord?.payables?.find((i) => i.id === id);
+
+        const newPayee = {
+          ...findPayable,
+          id: id,
+          due_date: dateString,
+        };
+        return [...prev, newPayee];
+      } else {
+        // Item exists, update it
+        const updatedPayables = [...prev];
+        updatedPayables[index] = {
+          ...updatedPayables[index],
+          due_date: dateString,
+        };
+        return updatedPayables;
+      }
+    });
+    console.log(unsavedPayables, dateString);
+  };
 
   const onChangePayables = (id, type, value) => {
     setUnsavedPayables((prev) => {
@@ -189,6 +147,8 @@ const Loans = () => {
   const onSavePayables = async (id) => {
     try {
       const findPayable = unsavedPayables?.find((i) => i.id === id);
+      console.log(unsavedPayables);
+      console.log(findPayable);
 
       await PayablesService.updatePayable(id, findPayable);
 
@@ -200,18 +160,50 @@ const Loans = () => {
     }
   };
 
-  const generateQuincenaInputs = (payable) => {
+  const generateQuincenaInputs = (key, payable) => {
     const quincenaDate = moment(payable.due_date);
     const quincenaFormatted = quincenaDate.format("MMMM D, YYYY");
 
+    const getPrevQuencena = currentRecord?.payables[key - 1];
+    const getNextQuencena = currentRecord?.payables[key + 1];
+
+    // Determine minDate
+    const minDate =
+      key - 1 < 0
+        ? dayjs("0001-01-01", "YYYY-MM-DD")
+        : dayjs(getPrevQuencena?.due_date, "YYYY-MM-DD").add(1, "day");
+
+    // Determine maxDate
+    const maxDate =
+      key + 1 === currentRecord?.payables.length
+        ? dayjs("9999-12-31", "YYYY-MM-DD")
+        : dayjs(getNextQuencena?.due_date, "YYYY-MM-DD").subtract(1, "day");
+
     return (
       <>
-        <Col span={12}>
-          <h5>{quincenaFormatted}</h5>
+        <Col span={10} className="mb-3">
+          {/* <h5>{quincenaFormatted}</h5>
+          <Input type="date" defaultValue={payable.due_date} /> */}
+
+          <DatePicker
+            key={new Date().getTime()}
+            className="w-100"
+            width={120}
+            onChange={(date, dateString) =>
+              handleDateChange(payable?.id, date, dateString)
+            }
+            value={
+              unsavedPayables[key]?.due_date
+                ? dayjs(unsavedPayables[key]?.due_date, "YYYY-MM-DD")
+                : dayjs(payable.due_date, "YYYY-MM-DD")
+            }
+            minDate={minDate}
+            maxDate={maxDate}
+          />
         </Col>
-        <Col span={24} key={payable.id} className="mb-3">
+
+        <Col span={12} key={payable.id} className="mb-1">
           <Input
-            readOnly
             prefix={
               payable?.status !== "paid" || (
                 <CheckCircleOutlined style={{ color: "green" }} />
@@ -227,7 +219,6 @@ const Loans = () => {
                 onChange={(e) => {
                   onChangePayables(payable?.id, "status", e);
                 }}
-                disabled
               >
                 <Option value="unpaid" style={{ color: "red" }}>
                   Unpaid
@@ -239,9 +230,18 @@ const Loans = () => {
             }
             defaultValue={payable?.amount}
           />
+        </Col>
+        <Col span={2} style={{ textAlign: "right" }}>
+          <Button
+            size="small"
+            type="text"
+            icon={<SaveOutlined style={{ color: "green" }} />}
+            onClick={() => onSavePayables(payable?.id)}
+          ></Button>
+        </Col>
 
+        <Col span={24} key={payable.id} className="mb-1">
           <TextArea
-            readOnly
             onChange={(e) => {
               onChangePayables(payable?.id, "description", e.target.value);
             }}
@@ -254,10 +254,40 @@ const Loans = () => {
       </>
     );
   };
+  // Function to calculate the total amount payable
+  const calculateTotalPayable = (quincena, payables) => {
+    // Validate inputs
+    if (!Array.isArray(payables) || typeof quincena !== "number") {
+      console.error("Invalid data provided for quincena or payables");
+      return 0; // Return 0 or handle the error as needed
+    }
 
+    // Count the number of payables
+    const numberOfPayables = payables.length;
+
+    // Calculate the total payable amount
+    const totalPayable = quincena * numberOfPayables;
+
+    return totalPayable;
+  };
+
+  // Safely calculate the total payable
+  if (currentRecord && currentRecord.quincena && currentRecord.payables) {
+    const totalPayable = calculateTotalPayable(
+      currentRecord.quincena,
+      currentRecord.payables
+    );
+
+    // Display the result, using formatNumber function
+    console.log(`Total Payable: ${formatNumber(totalPayable)}`);
+  } else {
+    console.error("currentRecord is missing quincena or payables");
+  }
   const showAddModal = () => {
+    form.resetFields(); // Clear any existing form values
     setIsAddModalOpen(true);
   };
+  
 
   const handleAddOk = async () => {
     try {
@@ -278,44 +308,23 @@ const Loans = () => {
     form.resetFields();
   };
 
-  const showViewModal = (record) => {
-    setCurrentRecord(record);
+  const showEditModal = (record) => {
+    setCurrentRecord(record); // Set the current record
     form.setFieldsValue({
       ...record,
-      date_loan: moment(record.date_loan).format("YYYY-MM-DD"), // Format the date
+      date_loan: moment(record.date_loan), // Keep it as a moment object
     });
-    const paymentPerQuincena = calculateQuincenaPayment(
-      record.amount,
-      record.interest,
-      record.months_payable
-    );
-    generateQuincenaInputs(
-      paymentPerQuincena,
-      record.payables // Pass the payables array directly here
-    );
-    setIsViewModalOpen(true);
+    setIsEditModalOpen(true); // Open the modal after setting the form values
   };
-
-  const handleViewOk = () => {
-    setIsViewModalOpen(false);
-    setCurrentRecord(null);
-  };
-
-  const handleViewCancel = () => {
-    setIsViewModalOpen(false);
-    setCurrentRecord(null);
-  };
-
-  const showEditModal = (record) => {
-    setCurrentRecord(record);
-    // form.setFieldsValue({
-    //   ...record,
-    //   date_loan: moment(record.date_loan).format("YYYY-MM-DD"), // Format the date
-    // });
-    // generateQuincenaInputs(record?.quincena, record.payables); // Generate inputs based on the payables array
-    setIsEditModalOpen(true);
-  };
-
+  useEffect(() => {
+    if (currentRecord) {
+      form.setFieldsValue({
+        ...currentRecord,
+        date_loan: moment(currentRecord.date_loan), // Format the date properly
+      });
+    }
+  }, [currentRecord, form]);
+  
   const handleEditOk = async () => {
     try {
       const values = form.getFieldsValue();
@@ -396,36 +405,47 @@ const Loans = () => {
       }, 0) || 0
     );
   };
-   // Function to calculate the total amount payable
-   const calculateTotalPayable = (quincena, payables) => {
-    // Validate inputs
-    if (!Array.isArray(payables) || typeof quincena !== "number") {
-      console.error("Invalid data provided for quincena or payables");
-      return 0; // Return 0 or handle the error as needed
+
+  const onFinish = async (values) => {
+    try {
+      // Recalculate the total number of payables and payment per quincena
+      const newMonthsPayable =
+        currentRecord.months_payable + values.additional_months;
+      const newInterest = values.interest;
+      const amount = currentRecord.amount;
+
+      const newPaymentPerQuincena = calculateQuincenaPayment(
+        amount,
+        newInterest,
+        newMonthsPayable
+      );
+
+      // Prepare the updated loan data
+      const updatedLoan = {
+        ...currentRecord,
+        date_loan: values.new_date_loan,
+        months_payable: newMonthsPayable,
+        interest: newInterest,
+        quincena: newPaymentPerQuincena.toFixed(2), // Update the payment per quincena
+      };
+
+      // Call the service to update the loan
+      await LoanService.updateLoan(updatedLoan.id, updatedLoan);
+
+      message.success("Loan extended successfully!");
+      setIsExtendModalOpen(false);
+      fetchLoans(); // Refresh the list of loans
+    } catch (error) {
+      message.error("Failed to extend the loan.");
     }
-
-    // Count the number of payables
-    const numberOfPayables = payables.length;
-
-    // Calculate the total payable amount
-    const totalPayable = quincena * numberOfPayables;
-
-    return totalPayable;
   };
 
-  // Safely calculate the total payable
-  if (currentRecord && currentRecord.quincena && currentRecord.payables) {
-    const totalPayable = calculateTotalPayable(
-      currentRecord.quincena,
-      currentRecord.payables
-    );
-
-    // Display the result, using formatNumber function
-    console.log(`Total Payable: ${formatNumber(totalPayable)}`);
-  } else {
-    console.error("currentRecord is missing quincena or payables");
-  }
   const columns = [
+    {
+      title: "ID",
+      dataIndex: "id",
+      key: "id",
+    },
     {
       title: "Date",
       dataIndex: "date",
@@ -454,12 +474,11 @@ const Loans = () => {
       },
     },
     {
-      title: "Status ",
+      title: "Status",
       dataIndex: "status",
-      width: 100,
       key: "status",
       render: (status) => {
-        let color = status === "completed" ? "green" : "volcano";
+        let color = status === "Completed" ? "green" : "volcano";
         return <Tag color={color}>{status}</Tag>;
       },
     },
@@ -473,18 +492,9 @@ const Loans = () => {
           <Button
             size="small"
             type="primary"
-            icon={<EyeOutlined />}
+            icon={<EditOutlined />}
             onClick={() => showEditModal(record)}
-            
           />
-          <Button
-            size="small"
-            type="primary"
-            icon={<DownloadOutlined />}
-            onClick={() => generateReceipt(record)} // This line calls generateReceipt with the specific record
-            disabled={record.status !== "completed"} // Disable if not completed
-          />
-        
         </Space>
         
       ),
@@ -493,7 +503,7 @@ const Loans = () => {
 
   return (
     <div>
-      <h1>History</h1>
+      <h1>Loans</h1>
 
       <Row className="mb-3">
         <Col span={20}>
@@ -506,6 +516,11 @@ const Loans = () => {
           />
           <Button type="primary" onClick={searchTerm} style={{ marginLeft: 8 }}>
             Search
+          </Button>
+        </Col>
+        <Col span={4} style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Button type="primary" onClick={showAddModal}>
+            Add Loan
           </Button>
         </Col>
       </Row>
@@ -527,11 +542,75 @@ const Loans = () => {
       )} */}
 
       <Modal
-        title="View Loan"
+        title="Add Loan"
+        visible={isAddModalOpen}
+        onOk={handleAddOk}
+        onCancel={handleAddCancel}
+        okText="Add"
+      >
+        <Form {...formItemLayout} form={form} onValuesChange={handleFormChange}>
+          <Row>
+            <Col span={24}>
+              <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item
+                name="address"
+                label="Address"
+                rules={[{ required: true }]}
+              >
+                <Input />
+              </Form.Item>
+              <Form.Item
+                name="date_loan"
+                label="Date Loan"
+                rules={[{ required: true }]}
+              >
+                <Input type="date" />
+              </Form.Item>
+              <Form.Item
+                name="amount"
+                label="Loan Amount"
+                rules={[{ required: true }]}
+              >
+                <Input type="number" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item
+                name="months_payable"
+                label="Months Payable"
+                rules={[{ required: true }]}
+              >
+                <Input type="number" />
+              </Form.Item>
+            </Col>
+
+            <Col span={12}>
+              <Form.Item
+                name="interest"
+                label="Interest Rate"
+                rules={[{ required: true }]}
+              >
+                <Input type="number" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item name="quincena" label="Payment per Quincena">
+            <Input type="number" readOnly />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Edit Loan"
         visible={isEditModalOpen}
-        onOk={() => setIsEditModalOpen(false)}
-        onCancel={() => setIsEditModalOpen(false)}
-        okText="Ok"
+        onOk={handleEditOk}
+        onCancel={handleEditCancel}
+        okText="Save"
         // footer={[]}
       >
         <Form
@@ -555,17 +634,26 @@ const Loans = () => {
                           label="Name"
                           rules={[{ required: true }]}
                         >
-                          <Input readOnly />
+                          <Input />
                         </Form.Item>
                         <Form.Item
                           name="address"
                           label="Address"
                           rules={[{ required: true }]}
                         >
-                          <Input readOnly />
+                          <Input />
+                        </Form.Item>
+                        <Form.Item
+                          name="address"
+                          label="Notes"
+                          rules={[{ required: true }]}
+                        >
+                          <Input />
                         </Form.Item>
                       </Col>
                     </Row>
+                    
+                   
 
                     <Row gutter={12}>
                       <Col span={12}>
@@ -595,7 +683,7 @@ const Loans = () => {
                           label="Months Payable"
                           rules={[{ required: true }]}
                         >
-                          <h5>{currentRecord?.months_payable} </h5>
+                          <h5>{currentRecord?.months_payable}</h5>
                         </Form.Item>
                         <Form.Item
                           name="interest"
@@ -614,7 +702,19 @@ const Loans = () => {
                       </Col>
 
                       <Col span={12}>
-                        <h5> {currentRecord?.completed} </h5>
+                        <Form.Item name="status" label="Status">
+                          <Select defaultValue={currentRecord?.status}>
+                            <Option value="rejected" style={{ color: "red" }}>
+                              Reject
+                            </Option>
+                            <Option
+                              value="completed"
+                              style={{ color: "green" }}
+                            >
+                              Complete
+                            </Option>
+                          </Select>
+                        </Form.Item>
                       </Col>
                     </Row>
                   </>
@@ -669,11 +769,11 @@ const Loans = () => {
                         <Tag color="warning">Loan: Data unavailable</Tag>
                       )}
                     </Col>
-                      
-                  
 
-                    {currentRecord?.payables?.map((payable) =>
-                      generateQuincenaInputs(payable)
+                    <Divider />
+
+                    {currentRecord?.payables?.map((payable, key) =>
+                      generateQuincenaInputs(key, payable)
                     )}
                   </Row>
                 ),
@@ -682,9 +782,8 @@ const Loans = () => {
           />
         </Form>
       </Modal>
-    </div>
+  </div>
   );
 };
 
 export default Loans;
-
