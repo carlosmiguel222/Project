@@ -4,7 +4,7 @@ Freelance Project.
 # Lending App
 
 This is a lending application built using **React** and **Laravel**. It allows users to manage loans, track histories, and generate receipts.
-![App Screenshot]()
+![App Screenshot](https://github.com/carlosmiguel222/Project/blob/41eff3abf99e80b30ad0e7daea0a50a85786dcce/Dashboard.jpeg.jpg)
 
 
 ## 🚀 Features
