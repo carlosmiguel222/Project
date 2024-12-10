@@ -7,7 +7,8 @@ This is a lending application built using **React** and **Laravel**. It allows u
 
 
 ![App Screenshot](https://github.com/carlosmiguel222/Project/blob/41eff3abf99e80b30ad0e7daea0a50a85786dcce/Dashboard.jpeg.jpg)
-![App Screenshot]()
+
+![App Screenshot](https://github.com/carlosmiguel222/Project/blob/2c6df00012409e80dcd9c77c5d24088e30869589/Loans.jpeg.jpg)
 
 ![App Screenshot](https://github.com/carlosmiguel222/Project/blob/25c5f7580a0920f4884e5781515dcffbba858685/History.jpeg.jpg)
 
